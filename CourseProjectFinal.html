@@ -228,9 +228,9 @@ myTrainCV &lt;- myTraining[-inTrain, ]</code></pre>
 <p>First, we fitted a CART model using 5-fold cross-validation, applied the model to our cross-validation subset and show the confusion matrix.</p>
 <pre class="r"><code>fitControlCart &lt;- trainControl(method=&quot;cv&quot;, number=5)
 modFitCart &lt;- train(classe ~ ., method=&quot;rpart&quot;, data=myTrainTR, 
-                    trControl=fitControlCart)
-
-predCart &lt;- predict(modFitCart, newdata=myTrainCV)
+                    trControl=fitControlCart)</code></pre>
+<pre><code>## Loading required package: rpart</code></pre>
+<pre class="r"><code>predCart &lt;- predict(modFitCart, newdata=myTrainCV)
 cmCart &lt;- confusionMatrix(predCart, myTrainCV$classe)
 cmCart</code></pre>
 <pre><code>## Confusion Matrix and Statistics
