@@ -1,0 +1,146 @@
+---
+title: 'Course Project: Practical Machine Learning'
+date: "24th January 2015"
+output: html_document
+---
+
+## Synopsis
+
+In this project, our goal was to analyse data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways and predict the manner in which they did the exercise.
+
+The steps carried out were:
+
+1. Get and prepare the specified training and test datasets;
+2. Split the specified training dataset further into two datasets, one for training the models and another for cross-validation;
+3. Fit several potential models on the training data subset
+4. Estimate the accuracy of the various models and select a final model;
+5. Apply the final model to the testing dataset.
+
+After comparing the accuracy of the models, we estimated that a Random Forest model had the highest accuracy and lowest out-of-sample error rate and selected it as our final model.
+
+## Details
+
+```{r, echo=FALSE, results='hide'}
+library(caret, quietly=TRUE)
+library(randomForest, quietly=TRUE)
+```
+
+### Getting the data
+
+We downloaded the training and testing dataset from the links provided in the question.
+
+```{r, echo=TRUE, cache=TRUE}
+urlTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+urlTest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(urlTrain, destfile="pml-training.csv", method="curl")
+download.file(urlTest, destfile="pml-testing.csv", method="curl")
+```
+
+### Pre-processing
+
+There were 160 variables in the initial training dataset. The last variable "classe" is the outcome we are trying to predict.
+
+There were also 160 variables in the initial testing dataset. The names of the first 159 variables were identical to those in the training dataset but the last variable was named "problem_id" (instead of "classe").
+
+```{r, echo=TRUE}
+training <- read.csv("pml-training.csv", na.strings=c("NA", "#DIV/0!"))
+testing <- read.csv("pml-testing.csv", na.strings=c("NA", "#DIV/0!"))
+names(training)
+```
+
+The first seven variables appeared to identify the participants and the time of the experiments and did not appear relevant to predicting the manner in which they did the exercise. Therefore, we removed those seven variables from the training and testing datasets.
+
+```{r, echo=TRUE}
+myTraining <- training[ , -(1:7)]
+myTesting <- testing[ , -(1:7)]
+```
+
+In the training data, a large number of the variables had missing (NA) or errors (#DIV/0!) values. In total, we found 100 variables had a substantial proportion (>90%) of missing or erroreous values. Keeping these variables may cause issues when fitting the models so we removed them from both the training and testing data. 
+
+```{r, echo=TRUE}
+propNA <- colSums(is.na(myTraining)) / nrow(myTraining)
+naCols <- which(propNA > 0.1)
+myTraining <- myTraining[ , -naCols]
+myTesting <- myTesting[ , -naCols]
+```
+
+We further checked if the remaining variables had near zero values that may not have much explanatory power and could potentially be removed. We found a few variables (eg. "pitch_arm", "pitch_forearm" etc) contained a significant proportion of common values, but as they were still distinct values and not near zero, we decided to keep them in the datasets.
+
+```{r, echo=FALSE}
+nzv <- nearZeroVar(myTraining, saveMetrics=TRUE)
+```
+
+Following the pre-processing, we were left with 53 variables (ie. 52 predictors) in the training and testing datasets.
+
+```{r, echo=TRUE}
+names(myTraining)
+```
+
+### Create cross-validation dataset
+
+Next, we split the training dataset into a training subset and a cross-validation dataset. While the cross-validation is carried out by default in the caret package's train function, we will use our cross-validation dataset to estimate the expected out of sample error rates, as required in the submission.
+
+```{r, echo=TRUE}
+set.seed(123456)
+inTrain <- createDataPartition(myTraining$classe, p=0.7, list=FALSE)
+myTrainTR <- myTraining[inTrain, ]
+myTrainCV <- myTraining[-inTrain, ]
+```
+
+### Fit candidate models
+
+We fit two candidate models to the training subset:
+
+1. Classification and regression tree (CART)
+2. Random Forest
+
+The models were then applied to the cross-validation dataset and their accuracies were compared.
+
+#### 1. CART
+
+First, we fitted a CART model using 5-fold cross-validation, applied the model to our cross-validation subset and show the confusion matrix.
+
+```{r, echo=TRUE, cache=TRUE}
+fitControlCart <- trainControl(method="cv", number=5)
+modFitCart <- train(classe ~ ., method="rpart", data=myTrainTR, 
+                    trControl=fitControlCart)
+
+predCart <- predict(modFitCart, newdata=myTrainCV)
+cmCart <- confusionMatrix(predCart, myTrainCV$classe)
+cmCart
+```
+
+#### 2. Random Forest
+
+Next, we fitted a Random Forest model using an "out-of-bag" (as suggested by a community TA in the discussion forums), applied the model to our cross-validation subset and show the confusion matrix.
+
+```{r, echo=TRUE, cache=TRUE}
+fitControlRf <- trainControl(method="oob", number=5)
+modFitRf <- train(classe ~ ., method="rf", data=myTrainTR, 
+                  trControl=fitControlRf)
+
+predRf <- predict(modFitRf, newdata=myTrainCV)
+cmRf <- confusionMatrix(predRf, myTrainCV$classe)
+cmRf
+```
+
+### Out of sample error estimation
+
+Between the two candidate models, the Random Forest model showed much higher accuracy of 0.994 or lower error rate of 0.006 (ie. 1 - accuracy). The accuracy of the CART model was relatively low (ie. high error rate).
+
+Therefore, we selected the Random Forest model as our final model.
+
+```{r, echo=FALSE}
+modComp <- rbind(cmCart$overall["Accuracy"], cmRf$overall["Accuracy"])
+rownames(modComp) <- c("CART", "RandomForest")
+modComp
+```
+
+### Prediction using final model
+
+Finally, we applied the fitted Random Forest model to the testing dataset. The resulting predictions were:
+
+```{r, echo=FALSE}
+predFinal <- predict(modFitRf, newdata=myTesting)
+predFinal
+```
